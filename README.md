@@ -23,5 +23,7 @@ bash build.sh
 
 ## Licence
 
-The source code is MIT (see `LICENSE`). Files in `res/` (logo, fonts, music) belong to the DDSD project or their own
+The source code is MIT (see `LICENSE`). Files in `res/` (logo, icon, music) belong to the DDSD project or their own
 authors, and are not covered by the MIT licence.
+
+The launcher also uses the Riffic Free and Aller fonts. They are not included here; drop `RifficFree-Bold.ttf` and `Aller_Rg.ttf` into `res/` to embed them, otherwise it uses the system font.
