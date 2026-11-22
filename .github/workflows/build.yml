@@ -1,0 +1,21 @@
+name: build
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Mono
+        run: sudo apt-get update && sudo apt-get install -y mono-mcs mono-devel
+      - name: Build
+        run: bash build.sh
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: unsigned-launcher
+          path: out/DDSD Launcher.exe
+      # Signing: filled in once the SignPath Foundation application is approved
+      # (signpath/github-action-submit-signing-request, with the project and policy slugs SignPath gives us).
