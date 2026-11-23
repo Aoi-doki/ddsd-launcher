@@ -327,7 +327,10 @@ function showView(v: string) {
   document.querySelectorAll<HTMLButtonElement>(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.view === v)));
   say2("");
   if (v === "mods") void loadMods();
-  if (v === "browse") void loadCatalog();
+  if (v === "browse") {
+    catalog = null; // fetch fresh every time the tab opens
+    void loadCatalog();
+  }
 }
 document.querySelectorAll<HTMLButtonElement>(".tabs button").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view!)));
 
