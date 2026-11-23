@@ -524,24 +524,36 @@ $("beta").addEventListener("click", async () => {
   }
 });
 
-// Music (Monika's Waltz, piano by Aoi): off until you turn it on.
-const music = new Audio("/waltz.mp3");
-music.loop = true;
-music.volume = 0.35;
+// Music (Monika's Waltz, piano by Aoi): off until you turn it on. WebKitGTK cannot stream media from the app's own
+// URL scheme, so the file is fetched once and played from a blob URL.
+let music: HTMLAudioElement | null = null;
 const musicBtn = $<HTMLButtonElement>("music");
 function paintMusic(on: boolean) {
   musicBtn.textContent = on ? "Music: on" : "Music: off";
   musicBtn.setAttribute("aria-pressed", String(on));
 }
-musicBtn.addEventListener("click", () => {
-  if (music.paused) {
-    void music.play().catch(() => undefined);
-    paintMusic(true);
-    try { localStorage.setItem("music", "1"); } catch { /* storage may be blocked */ }
-  } else {
-    music.pause();
+async function loadMusic(): Promise<HTMLAudioElement> {
+  if (music) return music;
+  const blob = await (await fetch("/waltz.mp3")).blob();
+  const a = new Audio(URL.createObjectURL(new Blob([blob], { type: "audio/mpeg" })));
+  a.loop = true;
+  a.volume = 0.35;
+  music = a;
+  return a;
+}
+musicBtn.addEventListener("click", async () => {
+  try {
+    const a = await loadMusic();
+    if (a.paused) {
+      await a.play();
+      paintMusic(true);
+    } else {
+      a.pause();
+      paintMusic(false);
+    }
+  } catch (e) {
     paintMusic(false);
-    try { localStorage.setItem("music", "0"); } catch { /* storage may be blocked */ }
+    say(`Could not play the music (${String(e)}).`, true);
   }
 });
 void currentView;
