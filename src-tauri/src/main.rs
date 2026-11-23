@@ -8,11 +8,12 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+mod mods;
 use tauri::{AppHandle, Emitter};
 
 const FEED: &str = "https://github.com/Aoi-doki/ddsd-releases/releases/latest/download/";
 const NEWS: &str = "https://aoi-doki.github.io/ddsd/news.json";
-const RPAS: [&str; 3] = ["audio.rpa", "fonts.rpa", "images.rpa"];
+pub const RPAS: [&str; 3] = ["audio.rpa", "fonts.rpa", "images.rpa"];
 const LAUNCHER_VERSION: &str = "2.0";
 
 #[cfg(windows)]
@@ -49,7 +50,7 @@ struct Progress {
     total: u64,
 }
 
-fn home() -> PathBuf {
+pub fn home() -> PathBuf {
     if let Ok(h) = std::env::var("DDSD_HOME") {
         return PathBuf::from(h);
     }
@@ -88,11 +89,19 @@ fn status() -> Status {
     }
 }
 
+static BETA_FEED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
 fn feed_base() -> String {
-    std::env::var("DDSD_FEED").unwrap_or_else(|_| FEED.to_string())
+    if let Ok(f) = std::env::var("DDSD_FEED") {
+        return f;
+    }
+    if let Some(b) = BETA_FEED.lock().unwrap().clone() {
+        return b;
+    }
+    FEED.to_string()
 }
 
-fn client() -> Result<reqwest::Client, String> {
+pub fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent(format!("DDSD-Launcher/{}", LAUNCHER_VERSION))
         .build()
@@ -110,6 +119,10 @@ async fn fetch_text(url: &str) -> Result<String, String> {
     r.text().await.map_err(|e| e.to_string())
 }
 
+pub fn join_feed_pub(name: &str) -> String {
+    join_feed(name)
+}
+
 fn join_feed(name: &str) -> String {
     let b = feed_base();
     if b.starts_with("http") {
@@ -121,6 +134,7 @@ fn join_feed(name: &str) -> String {
 
 #[tauri::command]
 async fn check_update() -> Result<Latest, String> {
+    *BETA_FEED.lock().unwrap() = mods::beta_feed().await.map(|f| if f.ends_with('/') { f } else { format!("{}/", f) });
     let t = fetch_text(&join_feed("latest.json")).await?;
     serde_json::from_str(&t).map_err(|e| format!("latest.json is not readable: {}", e))
 }
@@ -144,7 +158,7 @@ fn sha256_file(p: &Path) -> Result<String, String> {
     Ok(hex::encode(h.finalize()))
 }
 
-fn emit(app: &AppHandle, phase: &str, done: u64, total: u64) {
+pub fn emit(app: &AppHandle, phase: &str, done: u64, total: u64) {
     let _ = app.emit("progress", Progress { phase: phase.to_string(), done, total });
 }
 
@@ -336,6 +350,10 @@ fn steam_libraries() -> Vec<PathBuf> {
     libs
 }
 
+pub fn candidates_pub() -> Vec<PathBuf> {
+    candidates()
+}
+
 fn candidates() -> Vec<PathBuf> {
     let mut c: Vec<PathBuf> = steam_libraries()
         .into_iter()
@@ -455,11 +473,23 @@ fn uninstall() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn open_dir(path: String) -> Result<(), String> {
+    #[cfg(windows)]
+    let opener = "explorer";
+    #[cfg(not(windows))]
+    let opener = "xdg-open";
+    std::process::Command::new(opener).arg(&path).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![status, check_update, news, install, find_ddlc, use_ddlc, play, uninstall])
+        .invoke_handler(tauri::generate_handler![status, check_update, news, install, find_ddlc, use_ddlc, play, uninstall, open_dir,
+            mods::list_mods, mods::play_mod, mods::open_mod_folder, mods::remove_mod, mods::find_full_ddlc, mods::check_full_ddlc,
+            mods::add_mod, mods::catalog, mods::install_hub_mod, mods::share_mod, mods::report_mod, mods::beta_state,
+            mods::beta_join, mods::beta_leave])
         .run(tauri::generate_context!())
         .expect("error while running the launcher");
 }

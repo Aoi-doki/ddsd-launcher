@@ -25,17 +25,62 @@
         </div>
       </aside>
       <main class="main">
-        <h1>What's new</h1>
-        <div id="news" class="news"><p class="muted">Loading the news...</p></div>
+        <nav class="tabs" role="tablist">
+          <button role="tab" data-view="home" aria-selected="true">What's new</button>
+          <button role="tab" data-view="mods">My mods</button>
+          <button role="tab" data-view="browse">Browse mods</button>
+          <button role="tab" data-view="share">Share a mod</button>
+        </nav>
+        <section id="view-home" class="view">
+          <div id="news" class="news"><p class="muted">Loading the news...</p></div>
+        </section>
+        <section id="view-mods" class="view" hidden>
+          <div class="row"><button id="addmod" class="primary small">Add a mod (zip)</button><span class="muted">Each mod gets its own copy of your DDLC.</span></div>
+          <div id="modlist" class="news"></div>
+        </section>
+        <section id="view-browse" class="view" hidden>
+          <div id="catalog" class="news"><p class="muted">Loading the catalog...</p></div>
+        </section>
+        <section id="view-share" class="view" hidden>
+          <form id="shareform" class="card form">
+            <label>Mod name<input name="name" required maxlength="80" /></label>
+            <label>Author<input name="author" required maxlength="80" /></label>
+            <label>Version<input name="version" maxlength="30" /></label>
+            <label>Short description<textarea name="description" required rows="3" maxlength="600"></textarea></label>
+            <label>Licence
+              <select name="license" required>
+                <option value="">Pick one</option>
+                <option>All rights reserved (free to play)</option><option>CC BY 4.0</option><option>CC BY-NC 4.0</option>
+                <option>CC BY-SA 4.0</option><option>MIT</option><option>GPL-3.0</option><option>Other (in the zip)</option>
+              </select>
+            </label>
+            <label>Mod's own page (optional)<input name="page" type="url" placeholder="https://" /></label>
+            <label>Your contact (optional)<input name="contact" maxlength="120" /></label>
+            <div class="row"><button type="button" id="pickzip">Pick the mod's zip</button><span id="zipname" class="muted">No zip picked</span></div>
+            <label>...or a link to the zip<input name="link" type="url" placeholder="https://" /></label>
+            <label class="check"><input type="checkbox" name="agree" /> I made this mod (or have the author's permission) and the zip has no DDLC files in it.</label>
+            <div class="row"><button type="submit" class="primary small">Send for review</button></div>
+          </form>
+        </section>
+        <p id="msg2" class="msg" role="status"></p>
         <footer class="foot">
           <a href="https://discord.gg/FV4pHRJVMU" data-open>Discord</a>
           <a href="https://aoi-doki.github.io/ddsd/" data-open>Website</a>
           <a href="https://ddlc.moe" data-open>Get DDLC (free)</a>
+          <button id="beta" class="link">Beta code</button>
+          <button id="music" class="link" aria-pressed="false">Music: off</button>
           <button id="uninstall" class="link" hidden>Uninstall (keeps saves)</button>
           <span id="ver" class="muted"></span>
         </footer>
       </main>
     </div>
+    <dialog id="dlg" class="card">
+      <form method="dialog" id="dlgform">
+        <p id="dlgtext"></p>
+        <input id="dlginput" hidden />
+        <div class="row"><button value="ok" class="primary small" id="dlgok">OK</button><button value="cancel" id="dlgcancel" type="button">Cancel</button></div>
+      </form>
+    </dialog>
     <script type="module" src="/main.ts"></script>
   </body>
 </html>
