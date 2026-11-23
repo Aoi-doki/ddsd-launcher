@@ -517,7 +517,8 @@ pub async fn catalog() -> Result<Value, String> {
             .filter(|d| {
                 d.get("name").and_then(|x| x.as_str()).is_some()
                     && (d.get("page").and_then(|x| x.as_str()).map(safe_url).unwrap_or(false)
-                        || d.get("download").and_then(|x| x.as_str()).map(|u| u.starts_with("https://")).unwrap_or(false))
+                        || d.get("download").and_then(|x| x.as_str()).map(|u| u.starts_with("https://")).unwrap_or(false)
+                        || d.get("direct").and_then(|x| x.as_str()).map(|u| u.starts_with("https://")).unwrap_or(false))
             })
             .collect();
         Ok::<Vec<Value>, String>(list)
@@ -532,7 +533,14 @@ pub async fn catalog() -> Result<Value, String> {
 #[tauri::command]
 pub async fn install_hub_mod(app: AppHandle, entry: Value, ddlc: Option<String>) -> Result<String, String> {
     let name = clean_name(entry.get("name").and_then(|v| v.as_str()).unwrap_or("Mod"));
-    let url = entry.get("download").and_then(|v| v.as_str()).ok_or("This mod is not hosted by the hub.")?.to_string();
+    // "download" = hosted by the hub (checked against its size and checksum); "direct" = a zip link on the mod
+    // author's own site, which the launcher fetches for the player (nothing is re-hosted).
+    let url = entry
+        .get("download")
+        .or_else(|| entry.get("direct"))
+        .and_then(|v| v.as_str())
+        .ok_or("This mod has no direct download. Open its page instead.")?
+        .to_string();
     if !url.starts_with("https://") {
         return Err("The download link is not https, so it was refused.".into());
     }

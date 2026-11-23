@@ -256,6 +256,7 @@ interface CatalogEntry {
   page?: string;
   image?: string;
   download?: string;
+  direct?: string;
   version?: string;
   license?: string;
   size?: number;
@@ -399,7 +400,7 @@ async function loadCatalog() {
     card.append(el("p", "meta", [d.version, d.author && `by ${d.author}`, d.license, d.size && mb(d.size)].filter(Boolean).join(" · ")));
     if (d.description) card.append(el("p", undefined, d.description));
     const btns = el("div", "btns");
-    if (d.download) {
+    if (d.download || d.direct) {
       btns.append(
         button("Get and install", async () => {
           const ddlc = await needFullDdlc();
