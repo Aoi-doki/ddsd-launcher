@@ -15,6 +15,9 @@ use tauri::AppHandle;
 
 const MODHUB: &str = "https://ddsd-modhub.callmerileyyyyy.workers.dev";
 const CATALOG_URL: &str = "https://raw.githubusercontent.com/Aoi-doki/ddsd-mods/main/catalog.json";
+// raw.githubusercontent.com is cached for ~5 minutes, so a removed mod would keep showing. The API is always current
+// (60 requests an hour per address is plenty for opening a tab); the raw address is the fallback.
+const CATALOG_API: &str = "https://api.github.com/repos/Aoi-doki/ddsd-mods/contents/catalog.json";
 const MOD_INFO: &str = "ddsd_mod.json";
 const MAX_UPLOAD: u64 = 95 << 20; // above this, the zip goes straight to the hub's R2 bucket (see put_big)
 const MAX_BIG_UPLOAD: u64 = 2000 << 20;
@@ -508,6 +511,17 @@ pub async fn catalog() -> Result<Value, String> {
     let get = |url: String| async move {
         let t = if let Ok(local) = std::env::var("DDSD_CATALOG") {
             fs::read_to_string(local).map_err(|e| e.to_string())?
+        } else if url.starts_with(CATALOG_URL) {
+            let api = client()?
+                .get(CATALOG_API)
+                .header("Accept", "application/vnd.github.raw+json")
+                .header("Cache-Control", "no-cache")
+                .send()
+                .await;
+            match api {
+                Ok(r) if r.status().is_success() => r.text().await.map_err(|e| e.to_string())?,
+                _ => client()?.get(&url).send().await.map_err(|e| e.to_string())?.text().await.map_err(|e| e.to_string())?,
+            }
         } else {
             client()?.get(&url).send().await.map_err(|e| e.to_string())?.text().await.map_err(|e| e.to_string())?
         };
