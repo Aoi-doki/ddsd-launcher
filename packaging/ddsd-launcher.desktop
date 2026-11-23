@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=DDSD Launcher
+Comment=Install, update and play Doki Doki Second Draft
+Exec=ddsd-launcher
+Icon=ddsd-launcher
+Categories=Game;
+Terminal=false

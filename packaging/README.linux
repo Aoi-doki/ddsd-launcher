@@ -1,0 +1,9 @@
+DDSD Launcher for Linux
+
+1. Extract this folder anywhere, then run ./ddsd-launcher
+2. Press Install. The game goes in ~/.local/share/DDSD (set DDSD_HOME to change that).
+3. The launcher looks for your own DDLC copy (Steam, Downloads, Documents). If it cannot find it, press
+   "Find my DDLC copy" and pick the DDLC zip or any file in the DDLC folder.
+
+Needs WebKitGTK 4.1 (package libwebkit2gtk-4.1 on Debian/Ubuntu, webkit2gtk-4.1 on Arch and Fedora).
+To add it to your menu, copy ddsd-launcher.desktop to ~/.local/share/applications/ and set Exec and Icon to full paths.

@@ -5,17 +5,45 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Mono
-        run: sudo apt-get update && sudo apt-get install -y mono-mcs mono-devel
-      - name: Build
-        run: bash build.sh
-      - uses: actions/upload-artifact@v4
-        id: upload
+      - uses: actions/setup-node@v4
         with:
-          name: unsigned-launcher
-          path: out/DDSD Launcher.exe
-      # Signing: filled in once the SignPath Foundation application is approved
-      # (signpath/github-action-submit-signing-request, with the project and policy slugs SignPath gives us).
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: npm ci
+      - run: npx tauri build --no-bundle
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p out/ddsd-launcher
+          cp src-tauri/target/release/ddsd-launcher out/ddsd-launcher/
+          cp packaging/ddsd-launcher.desktop packaging/README.linux out/ddsd-launcher/
+          cp src-tauri/icons/128x128.png out/ddsd-launcher/ddsd-launcher.png
+          tar -C out -czf ddsd-launcher-linux-x86_64.tar.gz ddsd-launcher
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: linux
+          path: ddsd-launcher-linux-x86_64.tar.gz
+      - uses: actions/upload-artifact@v4
+        id: upload-windows
+        if: runner.os == 'Windows'
+        with:
+          name: unsigned-windows
+          path: src-tauri/target/release/ddsd-launcher.exe
+      # Signing (Windows): added once the SignPath Foundation application is approved
+      # (signpath/github-action-submit-signing-request on the unsigned-windows artifact).

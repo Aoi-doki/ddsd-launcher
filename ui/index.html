@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Doki Doki Second Draft</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside class="side">
+        <img class="logo" src="/logo.png" alt="Doki Doki Second Draft" />
+        <section class="card status" aria-live="polite">
+          <dl>
+            <dt>Installed</dt><dd id="v-installed">...</dd>
+            <dt>Newest</dt><dd id="v-latest">...</dd>
+            <dt>DDLC files</dt><dd id="v-ddlc">...</dd>
+          </dl>
+        </section>
+        <div class="actions">
+          <button id="main" class="primary" disabled>Checking...</button>
+          <button id="ddlc" class="quiet" hidden>Find my DDLC copy</button>
+          <div class="bar" id="bar" hidden><div id="fill"></div></div>
+          <p id="msg" class="msg" role="status"></p>
+        </div>
+      </aside>
+      <main class="main">
+        <h1>What's new</h1>
+        <div id="news" class="news"><p class="muted">Loading the news...</p></div>
+        <footer class="foot">
+          <a href="https://discord.gg/FV4pHRJVMU" data-open>Discord</a>
+          <a href="https://aoi-doki.github.io/ddsd/" data-open>Website</a>
+          <a href="https://ddlc.moe" data-open>Get DDLC (free)</a>
+          <button id="uninstall" class="link" hidden>Uninstall (keeps saves)</button>
+          <span id="ver" class="muted"></span>
+        </footer>
+      </main>
+    </div>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>
