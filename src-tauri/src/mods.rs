@@ -373,6 +373,9 @@ fn pick_exe(dir: &Path) -> String {
 
 fn build_mod(app: &AppHandle, zip_path: &Path, ddlc: &Path, name: &str, hub_entry: Option<&Value>) -> Result<(), String> {
     let plan = plan_mod(zip_path)?;
+    // Some mods ship their own .rpy files and still check for DDLC's scripts.rpa at startup (the catalog entry says
+    // keep_ddlc_scripts). Otherwise DDLC's scripts.rpa is left out when the mod brings its own scripts.
+    let keep_ddlc_scripts = hub_entry.and_then(|h| h.get("keep_ddlc_scripts")).and_then(|v| v.as_bool()).unwrap_or(false);
     let dest = mods_dir().join(name);
     let part = mods_dir().join(format!("{}.part", name));
     let _ = fs::remove_dir_all(&part);
@@ -393,14 +396,14 @@ fn build_mod(app: &AppHandle, zip_path: &Path, ddlc: &Path, name: &str, hub_entr
                     continue;
                 }
                 let rel = n[root.len()..].to_string();
-                if is_safe_rel(&rel) && ddlc_wanted(&rel, !plan.ships_scripts) {
+                if is_safe_rel(&rel) && ddlc_wanted(&rel, keep_ddlc_scripts || !plan.ships_scripts) {
                     ddlc_jobs.push(Job { from: JobFrom::Entry(i), to: rel, size: e.size() });
                 }
             }
         } else {
             for e in walkdir::WalkDir::new(ddlc).into_iter().filter_map(|e| e.ok()).filter(|e| e.file_type().is_file()) {
                 let rel = e.path().strip_prefix(ddlc).unwrap().to_string_lossy().replace('\\', "/");
-                if ddlc_wanted(&rel, !plan.ships_scripts) {
+                if ddlc_wanted(&rel, keep_ddlc_scripts || !plan.ships_scripts) {
                     ddlc_jobs.push(Job { from: JobFrom::File(e.path().to_path_buf()), to: rel, size: e.metadata().map(|m| m.len()).unwrap_or(0) });
                 }
             }
@@ -439,7 +442,7 @@ fn build_mod(app: &AppHandle, zip_path: &Path, ddlc: &Path, name: &str, hub_entr
             "name": name, "zip": zip_path.file_name().unwrap_or_default().to_string_lossy(),
             "added": chrono::Local::now().format("%Y-%m-%d").to_string(),
             "exe": exe, "size": size,
-            "ddlc_scripts_rpa": if plan.ships_scripts { "left out (the mod has its own scripts)" } else { "kept" }
+            "ddlc_scripts_rpa": if keep_ddlc_scripts || !plan.ships_scripts { "kept" } else { "left out (the mod has its own scripts)" }
         });
         if let Some(h) = hub_entry {
             for k in ["id", "version", "license", "author"] {
