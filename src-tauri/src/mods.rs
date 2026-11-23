@@ -16,7 +16,8 @@ use tauri::AppHandle;
 const MODHUB: &str = "https://ddsd-modhub.callmerileyyyyy.workers.dev";
 const CATALOG_URL: &str = "https://raw.githubusercontent.com/Aoi-doki/ddsd-mods/main/catalog.json";
 const MOD_INFO: &str = "ddsd_mod.json";
-const MAX_UPLOAD: u64 = 95 << 20;
+const MAX_UPLOAD: u64 = 95 << 20; // above this, the zip goes straight to the hub's R2 bucket (see put_big)
+const MAX_BIG_UPLOAD: u64 = 2000 << 20;
 const ASSET_DIRS: [&str; 10] = ["mod_assets", "images", "audio", "gui", "fonts", "python-packages", "submods", "tl", "characters", "game"];
 
 #[cfg(windows)]
@@ -609,24 +610,72 @@ fn ddlc_file_in(zip_path: &Path) -> Option<String> {
     None
 }
 
+// Zips over the Worker's request limit: ask the hub for a presigned R2 address, PUT the file straight to it, and
+// return the address the hub can read it from (it then handles the mod like a link).
+async fn put_big(path: &Path, size: u64, on_progress: impl Fn(u64, u64) + Send + 'static) -> Result<String, String> {
+    use futures_util::StreamExt as _;
+    let fname = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let r = client()?
+        .post(format!("{}/upload-url", hub()))
+        .json(&serde_json::json!({ "size": size, "filename": fname }))
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the Mod Hub ({}). Are you online?", e))?;
+    let v: Value = r.json().await.map_err(|_| "The Mod Hub gave an answer I could not read.".to_string())?;
+    if !v.get("ok").and_then(|x| x.as_bool()).unwrap_or(false) {
+        return Err(v.get("error").and_then(|m| m.as_str()).unwrap_or("The Mod Hub said no.").to_string());
+    }
+    let put_url = v.get("put_url").and_then(|x| x.as_str()).ok_or("The hub did not give an upload address.")?.to_string();
+    let get_url = v.get("get_url").and_then(|x| x.as_str()).ok_or("The hub did not give a download address.")?.to_string();
+    let f = tokio::fs::File::open(path).await.map_err(|e| e.to_string())?;
+    let mut sent = 0u64;
+    let stream = tokio_util::io::ReaderStream::with_capacity(f, 1 << 20).map(move |c| {
+        if let Ok(b) = &c {
+            sent += b.len() as u64;
+            on_progress(sent, size);
+        }
+        c
+    });
+    let resp = client()?
+        .put(&put_url)
+        .header("content-length", size)
+        .body(reqwest::Body::wrap_stream(stream))
+        .send()
+        .await
+        .map_err(|e| format!("The upload failed ({}). Are you online?", e))?;
+    if !resp.status().is_success() {
+        return Err(format!("The upload was refused ({}).", resp.status()));
+    }
+    Ok(get_url)
+}
+
 #[tauri::command]
-pub async fn share_mod(fields: HashMap<String, String>, zip: Option<String>) -> Result<String, String> {
+pub async fn share_mod(app: AppHandle, fields: HashMap<String, String>, zip: Option<String>) -> Result<String, String> {
+    let mut fields = fields;
+    let mut small_zip: Option<String> = None;
     if let Some(z) = &zip {
         let p = Path::new(z);
         let len = fs::metadata(p).map_err(|_| "Could not find that zip any more. Pick it again.".to_string())?.len();
-        if len > MAX_UPLOAD {
-            return Err("That zip is over 95 MB. Upload it somewhere (Google Drive, MEGA, GitHub...) and paste the link instead.".into());
+        if len > MAX_BIG_UPLOAD {
+            return Err("That zip is over 2 GB. Upload it somewhere (Google Drive, MEGA, GitHub...) and paste the link instead.".into());
         }
         plan_mod(p)?;
         if let Some(d) = ddlc_file_in(p) {
             return Err(format!("The zip has DDLC's own {}. Take DDLC's files out (players bring their own copy).", d));
+        }
+        if len > MAX_UPLOAD {
+            let app2 = app.clone();
+            let link = put_big(p, len, move |d, t| emit(&app2, "upload", d, t)).await?;
+            fields.insert("link".into(), link);
+        } else {
+            small_zip = Some(z.clone());
         }
     }
     let mut form = reqwest::multipart::Form::new();
     for (k, v) in fields {
         form = form.text(k, v);
     }
-    if let Some(z) = zip {
+    if let Some(z) = small_zip {
         let bytes = fs::read(&z).map_err(|e| e.to_string())?;
         let fname = Path::new(&z).file_name().unwrap_or_default().to_string_lossy().replace('"', "_");
         form = form.part("file", reqwest::multipart::Part::bytes(bytes).file_name(fname).mime_str("application/zip").unwrap());
@@ -774,5 +823,56 @@ mod tests {
         assert_eq!(mod_name_from_zip("/x/Virtual.Love.zip"), "Virtual Love");
         assert!(ddlc_wanted("game/audio.rpa", false) && !ddlc_wanted("game/scripts.rpa", false) && ddlc_wanted("game/scripts.rpa", true));
         let _ = fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
+mod big_upload_test {
+    use super::*;
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::TcpListener;
+
+    // A tiny fake hub + R2 on localhost: /upload-url answers with a PUT address on itself, /put swallows the body.
+    #[test]
+    fn put_big_streams_the_whole_file() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let got = std::sync::Arc::new(std::sync::Mutex::new(0usize));
+        let g2 = got.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().take(2) {
+                let mut stream = stream.unwrap();
+                let mut r = BufReader::new(stream.try_clone().unwrap());
+                let mut first = String::new();
+                r.read_line(&mut first).unwrap();
+                let mut len = 0usize;
+                loop {
+                    let mut l = String::new();
+                    r.read_line(&mut l).unwrap();
+                    if l.trim().is_empty() { break; }
+                    if let Some(v) = l.to_lowercase().strip_prefix("content-length:") { len = v.trim().parse().unwrap(); }
+                }
+                let mut body = vec![0u8; len];
+                r.read_exact(&mut body).unwrap();
+                let reply = if first.starts_with("POST /upload-url") {
+                    format!("{{\"ok\":true,\"put_url\":\"http://127.0.0.1:{p}/put\",\"get_url\":\"http://127.0.0.1:{p}/obj.zip\"}}", p = port)
+                } else {
+                    *g2.lock().unwrap() = len;
+                    "{}".to_string()
+                };
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", reply.len(), reply).unwrap();
+            }
+        });
+        std::env::set_var("DDSD_MODHUB", format!("http://127.0.0.1:{}", port));
+        let f = std::env::temp_dir().join("ddsd-big-test.zip");
+        std::fs::write(&f, vec![7u8; 5_000_000]).unwrap();
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(0u64));
+        let s2 = seen.clone();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let url = rt.block_on(put_big(&f, 5_000_000, move |d, _| *s2.lock().unwrap() = d)).unwrap();
+        assert!(url.ends_with("/obj.zip"));
+        assert_eq!(*got.lock().unwrap(), 5_000_000);
+        assert_eq!(*seen.lock().unwrap(), 5_000_000);
+        let _ = std::fs::remove_file(&f);
     }
 }

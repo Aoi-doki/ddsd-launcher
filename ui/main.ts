@@ -154,6 +154,7 @@ async function chooseDdlc() {
 
 const phases: Record<string, string> = {
   download: "Downloading",
+  upload: "Uploading",
   check: "Checking the download",
   unpack: "Unpacking",
   install: "Installing",
@@ -226,10 +227,12 @@ document.querySelectorAll<HTMLAnchorElement>("a[data-open]").forEach((a) =>
 listen<Progress>("progress", (e) => {
   const p = e.payload;
   say(phases[p.phase] ?? p.phase);
-  if (p.phase === "download" && p.total > 0) {
+  if ((p.phase === "download" || p.phase === "upload") && p.total > 0) {
     fill.classList.remove("indeterminate");
     fill.style.width = `${Math.round((p.done / p.total) * 100)}%`;
-    say(`Downloading ${(p.done / 1e6).toFixed(0)} of ${(p.total / 1e6).toFixed(0)} MB`);
+    const verb = p.phase === "upload" ? "Uploading" : "Downloading";
+    say(`${verb} ${(p.done / 1e6).toFixed(0)} of ${(p.total / 1e6).toFixed(0)} MB`);
+    say2(msg.textContent ?? "");
   } else {
     fill.classList.add("indeterminate");
     fill.style.width = "100%";
