@@ -63,6 +63,9 @@ const fill = $("fill");
 let status: Status;
 let latest: Latest | null = null;
 let busy = false;
+let mods: { name: string; dir: string }[] = [];
+let target = "ddsd"; // "ddsd" or a mod's folder name
+try { target = localStorage.getItem("target") ?? "ddsd"; } catch { /* storage may be blocked */ }
 
 function say(text: string, error = false) {
   msg.textContent = text;
@@ -71,6 +74,16 @@ function say(text: string, error = false) {
 
 function needsUpdate(): boolean {
   return !!latest && status.installed !== latest.version;
+}
+
+async function loadTargets() {
+  mods = await invoke<{ name: string; dir: string }[]>("list_mods");
+  if (target !== "ddsd" && !mods.some((m) => m.dir === target)) target = "ddsd";
+  const sel = $<HTMLSelectElement>("target");
+  sel.replaceChildren(new Option("Doki Doki Second Draft", "ddsd"));
+  for (const m of mods) sel.append(new Option(m.name, m.dir));
+  sel.value = target;
+  $("pickwrap").hidden = mods.length === 0;
 }
 
 function render() {
@@ -83,6 +96,14 @@ function render() {
   ddlcBtn.hidden = status.installed === null || status.ddlc_ok;
   mainBtn.disabled = busy;
   if (busy) return;
+  if (target !== "ddsd") {
+    // a mod is picked: it has its own DDLC copy, so DDSD's install state does not matter
+    const m = mods.find((x) => x.dir === target);
+    mainBtn.textContent = `Play ${m ? m.name : "the mod"}`;
+    mainBtn.dataset.mode = "playmod";
+    ddlcBtn.hidden = true;
+    return;
+  }
   if (status.installed === null) {
     mainBtn.textContent = latest ? "Install" : "Retry";
     mainBtn.dataset.mode = latest ? "install" : "retry";
@@ -165,6 +186,14 @@ mainBtn.addEventListener("click", async () => {
       return refresh();
     case "ddlc":
       return chooseDdlc();
+    case "playmod":
+      try {
+        await invoke("play_mod", { dir: target });
+        say("Starting the mod...");
+      } catch (e) {
+        say(String(e), true);
+      }
+      return;
     case "play":
       try {
         await invoke("play");
@@ -232,7 +261,14 @@ async function loadNews() {
   }
 }
 
-void refresh();
+$<HTMLSelectElement>("target").addEventListener("change", (ev) => {
+  target = (ev.target as HTMLSelectElement).value;
+  try { localStorage.setItem("target", target); } catch { /* storage may be blocked */ }
+  say("");
+  render();
+});
+
+void loadTargets().then(() => refresh());
 void loadNews();
 
 
@@ -343,6 +379,8 @@ async function addMod() {
 $("addmod").addEventListener("click", () => void addMod());
 
 async function loadMods() {
+  await loadTargets();
+  render();
   const box = $("modlist");
   box.replaceChildren();
   const mods = await invoke<ModInfo[]>("list_mods");
